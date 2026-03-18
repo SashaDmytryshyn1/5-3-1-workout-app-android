@@ -118,6 +118,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         save()
     }
 
+    fun updateTrainingMax(lift: MainLift, newTM: Double) {
+        val cycle = state.currentCycle ?: return
+        val updatedMaxes = when (lift) {
+            MainLift.OHP -> cycle.maxes.copy(ohp = newTM)
+            MainLift.SQUAT -> cycle.maxes.copy(squat = newTM)
+            MainLift.BENCH -> cycle.maxes.copy(bench = newTM)
+            MainLift.DEADLIFT -> cycle.maxes.copy(deadlift = newTM)
+        }
+        state = state.copy(currentCycle = cycle.copy(maxes = updatedMaxes))
+        save()
+    }
+
     fun updateSettings(unit: String, barWeight: Double, tmPercent: Double) {
         state = state.copy(
             unit = unit,
