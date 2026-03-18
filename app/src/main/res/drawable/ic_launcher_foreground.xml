@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Background circle -->
+    <path
+        android:fillColor="#BB86FC"
+        android:pathData="M54,54m-40,0a40,40 0,1 1,80 0a40,40 0,1 1,-80 0"/>
+    <!-- Dumbbell shape -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,50h48v8H30z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M26,40h10v28H26z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M72,40h10v28H72z"/>
+</vector>
