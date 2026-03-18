@@ -91,6 +91,7 @@ fun CycleOverviewScreen(
 
                 for (lift in WorkoutCalculator.dayOrder) {
                     val isCompleted = viewModel.isWorkoutCompleted(week, lift)
+                    val allSetsCompleted = viewModel.areAllSetsCompleted(week, lift)
 
                     Card(
                         modifier = Modifier
@@ -98,10 +99,11 @@ fun CycleOverviewScreen(
                             .padding(vertical = 2.dp)
                             .clickable { onWorkoutClick(week, lift) },
                         colors = CardDefaults.cardColors(
-                            containerColor = if (isCompleted)
-                                Color(0xFF1B5E20).copy(alpha = 0.3f)
-                            else
-                                MaterialTheme.colorScheme.surface
+                            containerColor = when {
+                                allSetsCompleted -> Color(0xFF1B5E20).copy(alpha = 0.3f)
+                                isCompleted -> Color(0xFFF57F17).copy(alpha = 0.2f)
+                                else -> MaterialTheme.colorScheme.surface
+                            }
                         )
                     ) {
                         Row(
@@ -111,11 +113,17 @@ fun CycleOverviewScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                if (isCompleted) Icons.Filled.CheckCircle
-                                else Icons.Outlined.Circle,
+                                when {
+                                    allSetsCompleted -> Icons.Filled.CheckCircle
+                                    isCompleted -> Icons.Filled.CheckCircle
+                                    else -> Icons.Outlined.Circle
+                                },
                                 contentDescription = null,
-                                tint = if (isCompleted) Color(0xFF4CAF50)
-                                else MaterialTheme.colorScheme.onSurfaceVariant
+                                tint = when {
+                                    allSetsCompleted -> Color(0xFF4CAF50)
+                                    isCompleted -> Color(0xFFFFA726)  // Orange for partial
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                }
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(

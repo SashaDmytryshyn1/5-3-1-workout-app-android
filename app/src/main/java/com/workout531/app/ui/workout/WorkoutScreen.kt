@@ -1,12 +1,12 @@
 package com.workout531.app.ui.workout
 
+import android.media.AudioManager
+import android.media.ToneGenerator
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +19,7 @@ import com.workout531.app.data.MainLift
 import com.workout531.app.data.Week
 import com.workout531.app.ui.AppViewModel
 import com.workout531.app.util.WorkoutCalculator
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,6 +32,38 @@ fun WorkoutScreen(
     val cycle = viewModel.state.currentCycle ?: return
     val trainingMax = WorkoutCalculator.getTrainingMax(lift, cycle.maxes)
     val sets = WorkoutCalculator.generateWorkout(lift, week, trainingMax, viewModel.state.roundTo)
+
+    // Rest timer state
+    var restTimerActive by remember { mutableStateOf(false) }
+    var restTimeRemaining by remember { mutableIntStateOf(viewModel.state.restTimerSeconds) }
+    var showTimerSettings by remember { mutableStateOf(false) }
+
+    // Rest timer countdown
+    LaunchedEffect(restTimerActive) {
+        if (restTimerActive) {
+            while (restTimeRemaining > 0) {
+                delay(1000L)
+                restTimeRemaining--
+            }
+            if (restTimeRemaining <= 0) {
+                // Play ding sound
+                try {
+                    val toneGen = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
+                    toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 500)
+                    // Play a second ding after a short pause for a pleasant chime
+                    delay(600L)
+                    toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 300)
+                    delay(400L)
+                    toneGen.release()
+                } catch (_: Exception) { }
+                restTimerActive = false
+            }
+        }
+    }
+
+    // Secondary exercises
+    val secondaryExercises = viewModel.getSecondaryExercises(lift)
+    var showAddExerciseDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -60,6 +93,20 @@ fun WorkoutScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // Rest Timer Bar
+            RestTimerBar(
+                isActive = restTimerActive,
+                timeRemaining = restTimeRemaining,
+                totalTime = viewModel.state.restTimerSeconds,
+                onDismiss = {
+                    restTimerActive = false
+                    restTimeRemaining = viewModel.state.restTimerSeconds
+                },
+                onSettingsClick = { showTimerSettings = true }
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
             // Sets
             sets.forEachIndexed { index, set ->
                 val completedReps = viewModel.getCompletedReps(week, lift, index)
@@ -77,6 +124,9 @@ fun WorkoutScreen(
                     barWeight = viewModel.state.barWeight,
                     onComplete = { reps ->
                         viewModel.completeSet(week, lift, index, reps)
+                        // Start rest timer
+                        restTimeRemaining = viewModel.state.restTimerSeconds
+                        restTimerActive = true
                     }
                 )
 
@@ -85,7 +135,11 @@ fun WorkoutScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (viewModel.isWorkoutCompleted(week, lift)) {
+            // Workout completion banner
+            val workoutCompleted = viewModel.isWorkoutCompleted(week, lift)
+            val allSetsCompleted = viewModel.areAllSetsCompleted(week, lift)
+
+            if (workoutCompleted) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -102,22 +156,375 @@ fun WorkoutScreen(
                         Icon(
                             Icons.Filled.Check,
                             contentDescription = null,
-                            tint = Color(0xFF4CAF50)
+                            tint = if (allSetsCompleted) Color(0xFF4CAF50) else Color(0xFFFFA726)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            "Workout Complete!",
+                            if (allSetsCompleted) "Workout Complete!"
+                            else "Workout Complete (some sets skipped)",
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF4CAF50),
-                            fontSize = 18.sp
+                            color = if (allSetsCompleted) Color(0xFF4CAF50) else Color(0xFFFFA726),
+                            fontSize = 16.sp
                         )
                     }
                 }
             }
 
+            // --- Secondary Exercises Section ---
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                "Secondary Exercises",
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (secondaryExercises.isEmpty()) {
+                Text(
+                    "No secondary exercises added yet.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 14.sp
+                )
+            }
+
+            secondaryExercises.forEach { exercise ->
+                val completedSets = viewModel.getSecondaryCompletedSets(week, lift, exercise.id)
+
+                SecondaryExerciseCard(
+                    exercise = exercise,
+                    completedSets = completedSets,
+                    unit = viewModel.state.unit,
+                    onCompleteSet = {
+                        viewModel.completeSecondarySet(week, lift, exercise.id)
+                        // Start rest timer for secondary exercises too
+                        restTimeRemaining = viewModel.state.restTimerSeconds
+                        restTimerActive = true
+                    },
+                    onRemove = {
+                        viewModel.removeSecondaryExercise(lift, exercise.id)
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedButton(
+                onClick = { showAddExerciseDialog = true },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Add Secondary Exercise")
+            }
+
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
+
+    // Timer settings dialog
+    if (showTimerSettings) {
+        TimerSettingsDialog(
+            currentSeconds = viewModel.state.restTimerSeconds,
+            onDismiss = { showTimerSettings = false },
+            onSave = { seconds ->
+                viewModel.updateRestTimer(seconds)
+                showTimerSettings = false
+            }
+        )
+    }
+
+    // Add secondary exercise dialog
+    if (showAddExerciseDialog) {
+        AddSecondaryExerciseDialog(
+            unit = viewModel.state.unit,
+            onDismiss = { showAddExerciseDialog = false },
+            onAdd = { name, numSets, reps, weight ->
+                viewModel.addSecondaryExercise(lift, name, numSets, reps, weight)
+                showAddExerciseDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+fun RestTimerBar(
+    isActive: Boolean,
+    timeRemaining: Int,
+    totalTime: Int,
+    onDismiss: () -> Unit,
+    onSettingsClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isActive)
+                MaterialTheme.colorScheme.primaryContainer
+            else
+                MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.Timer,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = if (isActive) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+
+                if (isActive) {
+                    val minutes = timeRemaining / 60
+                    val seconds = timeRemaining % 60
+                    Text(
+                        "Rest: ${minutes}:%02d".format(seconds),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = onDismiss) {
+                        Text("Skip")
+                    }
+                } else {
+                    Text(
+                        "Rest Timer: ${totalTime}s",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = onSettingsClick, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            Icons.Filled.Settings,
+                            contentDescription = "Timer settings",
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+
+            if (isActive) {
+                Spacer(modifier = Modifier.height(4.dp))
+                LinearProgressIndicator(
+                    progress = timeRemaining.toFloat() / totalTime.toFloat(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp),
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TimerSettingsDialog(
+    currentSeconds: Int,
+    onDismiss: () -> Unit,
+    onSave: (Int) -> Unit
+) {
+    var input by remember { mutableStateOf(currentSeconds.toString()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rest Timer") },
+        text = {
+            Column {
+                Text("Set default rest time (seconds):")
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { if (it.isEmpty() || it.toIntOrNull() != null) input = it },
+                    label = { Text("Seconds") },
+                    singleLine = true
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(60, 90, 120, 180).forEach { preset ->
+                        FilterChip(
+                            selected = input == preset.toString(),
+                            onClick = { input = preset.toString() },
+                            label = { Text("${preset}s") }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val secs = input.toIntOrNull() ?: currentSeconds
+                onSave(secs.coerceIn(10, 600))
+            }) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+fun SecondaryExerciseCard(
+    exercise: com.workout531.app.data.SecondaryExercise,
+    completedSets: Int,
+    unit: String,
+    onCompleteSet: () -> Unit,
+    onRemove: () -> Unit
+) {
+    var showRemoveConfirm by remember { mutableStateOf(false) }
+    val allDone = completedSets >= exercise.sets
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (allDone) Color(0xFF1B5E20).copy(alpha = 0.15f)
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    exercise.name,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+                Text(
+                    "${exercise.sets} × ${exercise.reps} @ ${exercise.weight.toInt()} $unit",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 14.sp
+                )
+                Text(
+                    "Sets done: $completedSets / ${exercise.sets}",
+                    fontSize = 12.sp,
+                    color = if (allDone) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (!allDone) {
+                FilledTonalButton(onClick = onCompleteSet) {
+                    Text("Done")
+                }
+            } else {
+                Icon(
+                    Icons.Filled.Check,
+                    contentDescription = "All sets complete",
+                    tint = Color(0xFF4CAF50),
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
+
+            IconButton(
+                onClick = { showRemoveConfirm = true },
+                modifier = Modifier.size(28.dp)
+            ) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = "Remove",
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+
+    if (showRemoveConfirm) {
+        AlertDialog(
+            onDismissRequest = { showRemoveConfirm = false },
+            title = { Text("Remove Exercise") },
+            text = { Text("Remove \"${exercise.name}\" from ${exercise.name}?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onRemove()
+                    showRemoveConfirm = false
+                }) { Text("Remove") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRemoveConfirm = false }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+@Composable
+fun AddSecondaryExerciseDialog(
+    unit: String,
+    onDismiss: () -> Unit,
+    onAdd: (name: String, sets: Int, reps: Int, weight: Double) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var setsInput by remember { mutableStateOf("3") }
+    var repsInput by remember { mutableStateOf("10") }
+    var weightInput by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add Secondary Exercise") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Exercise Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = setsInput,
+                        onValueChange = { if (it.isEmpty() || it.toIntOrNull() != null) setsInput = it },
+                        label = { Text("Sets") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = repsInput,
+                        onValueChange = { if (it.isEmpty() || it.toIntOrNull() != null) repsInput = it },
+                        label = { Text("Reps") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                OutlinedTextField(
+                    value = weightInput,
+                    onValueChange = { if (it.isEmpty() || it.toDoubleOrNull() != null) weightInput = it },
+                    label = { Text("Weight ($unit)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (name.isNotBlank()) {
+                        onAdd(
+                            name.trim(),
+                            setsInput.toIntOrNull() ?: 3,
+                            repsInput.toIntOrNull() ?: 10,
+                            weightInput.toDoubleOrNull() ?: 0.0
+                        )
+                    }
+                },
+                enabled = name.isNotBlank()
+            ) { Text("Add") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 @Composable

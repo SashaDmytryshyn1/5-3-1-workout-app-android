@@ -71,6 +71,15 @@ data class CompletedSet(
     val isAmrap: Boolean
 )
 
+data class SecondaryExercise(
+    val id: String = "",
+    val name: String = "",
+    val sets: Int = 3,
+    val reps: Int = 10,
+    val weight: Double = 0.0,
+    val completedSets: Int = 0
+)
+
 data class AppState(
     val oneRepMaxes: LiftMaxes = LiftMaxes(),
     val tmPercent: Double = 0.90,
@@ -79,5 +88,10 @@ data class AppState(
     val isSetup: Boolean = false,
     val roundTo: Double = 5.0,
     val unit: String = "lbs",
-    val barWeight: Double = 45.0
+    val barWeight: Double = 45.0,
+    val restTimerSeconds: Int = 90,
+    // Key: MainLift.name -> list of secondary exercises (persists across cycles)
+    val secondaryExercises: Map<String, List<SecondaryExercise>> = emptyMap(),
+    // Key: "cycleNum_week_lift" -> list of secondary exercise completion states for current workout
+    val secondaryExerciseProgress: Map<String, List<SecondaryExercise>> = emptyMap()
 )

@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import com.workout531.app.data.*
 import com.workout531.app.util.WorkoutCalculator
 import java.time.LocalDate
+import java.util.UUID
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val dataStore = DataStore(application)
@@ -66,10 +67,27 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         state = state.copy(
             currentCycle = cycle.copy(completedWorkouts = updatedWorkouts)
         )
-        save() // Auto-save on every set completion!
+        save()
     }
 
+    /**
+     * Workout is "complete" if the last main (non-warmup) set is done.
+     */
     fun isWorkoutCompleted(week: Week, lift: MainLift): Boolean {
+        val cycle = state.currentCycle ?: return false
+        val key = cycle.key(week, lift)
+        val completed = cycle.completedWorkouts[key] ?: return false
+        val trainingMax = WorkoutCalculator.getTrainingMax(lift, cycle.maxes)
+        val allSets = WorkoutCalculator.generateWorkout(lift, week, trainingMax, state.roundTo)
+        // Last set index (0-based) = allSets.size - 1, setNumber = allSets.size
+        val lastSetNumber = allSets.size
+        return completed.sets.any { it.setNumber == lastSetNumber }
+    }
+
+    /**
+     * All sets (including warmups) are completed.
+     */
+    fun areAllSetsCompleted(week: Week, lift: MainLift): Boolean {
         val cycle = state.currentCycle ?: return false
         val key = cycle.key(week, lift)
         val completed = cycle.completedWorkouts[key] ?: return false
@@ -93,7 +111,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val newCycleNumber = state.currentCycleNumber + 1
         state = state.copy(
             currentCycleNumber = newCycleNumber,
-            currentCycle = Cycle(number = newCycleNumber, maxes = newMaxes)
+            currentCycle = Cycle(number = newCycleNumber, maxes = newMaxes),
+            // Clear secondary exercise progress for the new cycle but keep templates
+            secondaryExerciseProgress = emptyMap()
         )
         save()
     }
@@ -108,8 +128,75 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         save()
     }
 
+    fun updateRestTimer(seconds: Int) {
+        state = state.copy(restTimerSeconds = seconds)
+        save()
+    }
+
     fun resetApp() {
         state = AppState()
         save()
+    }
+
+    // --- Secondary Exercise Methods ---
+
+    fun getSecondaryExercises(lift: MainLift): List<SecondaryExercise> {
+        return state.secondaryExercises[lift.name] ?: emptyList()
+    }
+
+    fun addSecondaryExercise(lift: MainLift, name: String, sets: Int, reps: Int, weight: Double) {
+        val current = state.secondaryExercises.toMutableMap()
+        val exercises = (current[lift.name] ?: emptyList()).toMutableList()
+        exercises.add(SecondaryExercise(
+            id = UUID.randomUUID().toString(),
+            name = name,
+            sets = sets,
+            reps = reps,
+            weight = weight
+        ))
+        current[lift.name] = exercises
+        state = state.copy(secondaryExercises = current)
+        save()
+    }
+
+    fun removeSecondaryExercise(lift: MainLift, exerciseId: String) {
+        val current = state.secondaryExercises.toMutableMap()
+        val exercises = (current[lift.name] ?: emptyList()).filter { it.id != exerciseId }
+        current[lift.name] = exercises
+        state = state.copy(secondaryExercises = current)
+        save()
+    }
+
+    fun getSecondaryProgress(week: Week, lift: MainLift): List<SecondaryExercise> {
+        val key = "${state.currentCycleNumber}_${week.name}_${lift.name}"
+        return state.secondaryExerciseProgress[key] ?: emptyList()
+    }
+
+    fun completeSecondarySet(week: Week, lift: MainLift, exerciseId: String) {
+        val key = "${state.currentCycleNumber}_${week.name}_${lift.name}"
+        val progressMap = state.secondaryExerciseProgress.toMutableMap()
+        val progressList = (progressMap[key] ?: emptyList()).toMutableList()
+
+        val templates = getSecondaryExercises(lift)
+        val template = templates.find { it.id == exerciseId } ?: return
+
+        val existing = progressList.indexOfFirst { it.id == exerciseId }
+        if (existing >= 0) {
+            val current = progressList[existing]
+            if (current.completedSets < template.sets) {
+                progressList[existing] = current.copy(completedSets = current.completedSets + 1)
+            }
+        } else {
+            progressList.add(template.copy(completedSets = 1))
+        }
+
+        progressMap[key] = progressList
+        state = state.copy(secondaryExerciseProgress = progressMap)
+        save()
+    }
+
+    fun getSecondaryCompletedSets(week: Week, lift: MainLift, exerciseId: String): Int {
+        val progress = getSecondaryProgress(week, lift)
+        return progress.find { it.id == exerciseId }?.completedSets ?: 0
     }
 }
