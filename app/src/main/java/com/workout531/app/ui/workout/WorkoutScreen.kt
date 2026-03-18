@@ -618,6 +618,14 @@ fun SetCard(
                             color = Color(0xFF4CAF50),
                             fontWeight = FontWeight.Bold
                         )
+                        if (isAmrap && completedReps > 1) {
+                            val estimated1RM = WorkoutCalculator.calculate1RM(weight, completedReps)
+                            Text(
+                                "e1RM: ${estimated1RM.toInt()} $unit",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
             } else {
@@ -658,6 +666,17 @@ fun SetCard(
                         label = { Text("Reps completed") },
                         singleLine = true
                     )
+                    val enteredReps = repsInput.toIntOrNull()
+                    if (enteredReps != null && enteredReps > 1) {
+                        val estimated1RM = WorkoutCalculator.calculate1RM(weight, enteredReps)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "Estimated 1RM: ${estimated1RM.toInt()} $unit",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             },
             confirmButton = {

@@ -34,16 +34,18 @@ object WorkoutCalculator {
     ): List<WorkoutSet> {
         val sets = mutableListOf<WorkoutSet>()
 
-        // Warmup sets
-        val warmupPercentages = listOf(0.40, 0.50, 0.60)
-        warmupPercentages.forEachIndexed { i, pct ->
-            sets.add(WorkoutSet(
-                setNumber = i + 1,
-                percentage = pct,
-                reps = 5,
-                isWarmup = true,
-                weight = roundWeight(trainingMax * pct, roundTo)
-            ))
+        // Warmup sets (skip for deload week - working sets are already light)
+        if (week != Week.DELOAD) {
+            val warmupPercentages = listOf(0.40, 0.50, 0.60)
+            warmupPercentages.forEachIndexed { i, pct ->
+                sets.add(WorkoutSet(
+                    setNumber = i + 1,
+                    percentage = pct,
+                    reps = 5,
+                    isWarmup = true,
+                    weight = roundWeight(trainingMax * pct, roundTo)
+                ))
+            }
         }
 
         // Working sets based on week
