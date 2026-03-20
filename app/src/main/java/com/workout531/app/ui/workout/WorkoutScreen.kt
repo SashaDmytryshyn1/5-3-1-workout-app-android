@@ -12,12 +12,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.workout531.app.data.MainLift
 import com.workout531.app.data.Week
 import com.workout531.app.ui.AppViewModel
+import com.workout531.app.util.RestTimerNotification
 import com.workout531.app.util.WorkoutCalculator
 import kotlinx.coroutines.delay
 
@@ -32,6 +34,7 @@ fun WorkoutScreen(
     val cycle = viewModel.state.currentCycle ?: return
     val trainingMax = WorkoutCalculator.getTrainingMax(lift, cycle.maxes)
     val sets = WorkoutCalculator.generateWorkout(lift, week, trainingMax, viewModel.state.roundTo)
+    val context = LocalContext.current
 
     // Rest timer state
     var restTimerActive by remember { mutableStateOf(false) }
@@ -56,6 +59,8 @@ fun WorkoutScreen(
                     delay(400L)
                     toneGen.release()
                 } catch (_: Exception) { }
+                // Show system notification (works even if app is in background)
+                RestTimerNotification.showTimerDone(context)
                 restTimerActive = false
             }
         }
@@ -399,8 +404,9 @@ fun SecondaryExerciseCard(
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp
                 )
+                val weightText = if (exercise.weight < 0) "BW" else "${exercise.weight.toInt()} $unit"
                 Text(
-                    "${exercise.sets} × ${exercise.reps} @ ${exercise.weight.toInt()} $unit",
+                    "${exercise.sets} × ${exercise.reps} @ $weightText",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 14.sp
                 )
@@ -499,8 +505,13 @@ fun AddSecondaryExerciseDialog(
                 }
                 OutlinedTextField(
                     value = weightInput,
-                    onValueChange = { if (it.isEmpty() || it.toDoubleOrNull() != null) weightInput = it },
-                    label = { Text("Weight ($unit)") },
+                    onValueChange = {
+                        val lower = it.lowercase().trim()
+                        if (it.isEmpty() || lower == "b" || lower == "bw" || it.toDoubleOrNull() != null) {
+                            weightInput = it
+                        }
+                    },
+                    label = { Text("Weight ($unit) or \"bw\"") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -510,11 +521,13 @@ fun AddSecondaryExerciseDialog(
             TextButton(
                 onClick = {
                     if (name.isNotBlank()) {
+                        val weight = if (weightInput.lowercase().trim() == "bw") -1.0
+                            else weightInput.toDoubleOrNull() ?: 0.0
                         onAdd(
                             name.trim(),
                             setsInput.toIntOrNull() ?: 3,
                             repsInput.toIntOrNull() ?: 10,
-                            weightInput.toDoubleOrNull() ?: 0.0
+                            weight
                         )
                     }
                 },
