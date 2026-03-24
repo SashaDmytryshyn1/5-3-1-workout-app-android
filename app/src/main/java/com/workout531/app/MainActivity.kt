@@ -22,6 +22,7 @@ import com.workout531.app.ui.workout.CycleOverviewScreen
 import com.workout531.app.ui.workout.SettingsScreen
 import com.workout531.app.ui.workout.WorkoutScreen
 import com.workout531.app.ui.theme.WorkoutAppTheme
+import androidx.lifecycle.Lifecycle
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -80,19 +81,25 @@ fun WorkoutApp() {
                 viewModel = viewModel,
                 week = week,
                 lift = lift,
-                onBack = { navController.popBackStack() }
+                onBack = {
+                    if (backStackEntry.lifecycle.currentState == Lifecycle.State.RESUMED) {
+                        navController.popBackStack()
+                    }
+                }
             )
         }
 
-        composable("settings") {
+        composable("settings") { backStackEntry ->
             SettingsScreen(
                 viewModel = viewModel,
                 onBack = {
-                    if (viewModel.state.isSetup) {
-                        navController.popBackStack()
-                    } else {
-                        navController.navigate("setup") {
-                            popUpTo(0) { inclusive = true }
+                    if (backStackEntry.lifecycle.currentState == Lifecycle.State.RESUMED) {
+                        if (viewModel.state.isSetup) {
+                            navController.popBackStack()
+                        } else {
+                            navController.navigate("setup") {
+                                popUpTo(0) { inclusive = true }
+                            }
                         }
                     }
                 }

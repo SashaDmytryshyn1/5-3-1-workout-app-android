@@ -1,12 +1,20 @@
 package com.workout531.app.ui
 
 import android.app.Application
+import android.media.AudioManager
+import android.media.ToneGenerator
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.workout531.app.data.*
+import com.workout531.app.util.RestTimerNotification
 import com.workout531.app.util.WorkoutCalculator
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.util.UUID
 
@@ -15,6 +23,42 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     var state by mutableStateOf(dataStore.loadState())
         private set
+
+    // Rest timer state - lives in ViewModel so it survives navigation
+    var restTimerActive by mutableStateOf(false)
+        private set
+    var restTimeRemaining by mutableIntStateOf(0)
+        private set
+    private var timerJob: Job? = null
+
+    fun startRestTimer() {
+        timerJob?.cancel()
+        restTimeRemaining = state.restTimerSeconds
+        restTimerActive = true
+        timerJob = viewModelScope.launch {
+            while (restTimeRemaining > 0) {
+                delay(1000L)
+                restTimeRemaining--
+            }
+            // Play ding sound
+            try {
+                val toneGen = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
+                toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 500)
+                delay(600L)
+                toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 300)
+                delay(400L)
+                toneGen.release()
+            } catch (_: Exception) { }
+            RestTimerNotification.showTimerDone(getApplication())
+            restTimerActive = false
+        }
+    }
+
+    fun cancelRestTimer() {
+        timerJob?.cancel()
+        restTimerActive = false
+        restTimeRemaining = 0
+    }
 
     fun save() = dataStore.saveState(state)
 

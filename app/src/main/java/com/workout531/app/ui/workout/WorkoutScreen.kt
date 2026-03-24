@@ -1,7 +1,5 @@
 package com.workout531.app.ui.workout
 
-import android.media.AudioManager
-import android.media.ToneGenerator
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -12,16 +10,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.workout531.app.data.MainLift
 import com.workout531.app.data.Week
 import com.workout531.app.ui.AppViewModel
-import com.workout531.app.util.RestTimerNotification
 import com.workout531.app.util.WorkoutCalculator
-import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,37 +29,11 @@ fun WorkoutScreen(
     val cycle = viewModel.state.currentCycle ?: return
     val trainingMax = WorkoutCalculator.getTrainingMax(lift, cycle.maxes)
     val sets = WorkoutCalculator.generateWorkout(lift, week, trainingMax, viewModel.state.roundTo)
-    val context = LocalContext.current
 
-    // Rest timer state
-    var restTimerActive by remember { mutableStateOf(false) }
-    var restTimeRemaining by remember { mutableIntStateOf(viewModel.state.restTimerSeconds) }
+    // Rest timer state - lives in ViewModel to survive navigation
+    val restTimerActive = viewModel.restTimerActive
+    val restTimeRemaining = viewModel.restTimeRemaining
     var showTimerSettings by remember { mutableStateOf(false) }
-
-    // Rest timer countdown
-    LaunchedEffect(restTimerActive) {
-        if (restTimerActive) {
-            while (restTimeRemaining > 0) {
-                delay(1000L)
-                restTimeRemaining--
-            }
-            if (restTimeRemaining <= 0) {
-                // Play ding sound
-                try {
-                    val toneGen = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
-                    toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 500)
-                    // Play a second ding after a short pause for a pleasant chime
-                    delay(600L)
-                    toneGen.startTone(ToneGenerator.TONE_PROP_BEEP, 300)
-                    delay(400L)
-                    toneGen.release()
-                } catch (_: Exception) { }
-                // Show system notification (works even if app is in background)
-                RestTimerNotification.showTimerDone(context)
-                restTimerActive = false
-            }
-        }
-    }
 
     // Secondary exercises
     val secondaryExercises = viewModel.getSecondaryExercises(lift)
@@ -103,10 +72,7 @@ fun WorkoutScreen(
                 isActive = restTimerActive,
                 timeRemaining = restTimeRemaining,
                 totalTime = viewModel.state.restTimerSeconds,
-                onDismiss = {
-                    restTimerActive = false
-                    restTimeRemaining = viewModel.state.restTimerSeconds
-                },
+                onDismiss = { viewModel.cancelRestTimer() },
                 onSettingsClick = { showTimerSettings = true }
             )
 
@@ -129,9 +95,7 @@ fun WorkoutScreen(
                     barWeight = viewModel.state.barWeight,
                     onComplete = { reps ->
                         viewModel.completeSet(week, lift, index, reps)
-                        // Start rest timer
-                        restTimeRemaining = viewModel.state.restTimerSeconds
-                        restTimerActive = true
+                        viewModel.startRestTimer()
                     }
                 )
 
@@ -203,9 +167,7 @@ fun WorkoutScreen(
                     unit = viewModel.state.unit,
                     onCompleteSet = {
                         viewModel.completeSecondarySet(week, lift, exercise.id)
-                        // Start rest timer for secondary exercises too
-                        restTimeRemaining = viewModel.state.restTimerSeconds
-                        restTimerActive = true
+                        viewModel.startRestTimer()
                     },
                     onRemove = {
                         viewModel.removeSecondaryExercise(lift, exercise.id)
