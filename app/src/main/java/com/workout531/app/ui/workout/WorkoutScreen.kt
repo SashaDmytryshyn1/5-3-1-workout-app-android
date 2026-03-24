@@ -38,6 +38,8 @@ fun WorkoutScreen(
     // Secondary exercises
     val secondaryExercises = viewModel.getSecondaryExercises(lift)
     var showAddExerciseDialog by remember { mutableStateOf(false) }
+    var editingExercise by remember { mutableStateOf<com.workout531.app.data.SecondaryExercise?>(null) }
+    var showSecondaryTimerSettings by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -142,11 +144,22 @@ fun WorkoutScreen(
             // --- Secondary Exercises Section ---
             Spacer(modifier = Modifier.height(24.dp))
 
-            Text(
-                "Secondary Exercises",
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Secondary Exercises",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = { showSecondaryTimerSettings = true }) {
+                    Icon(Icons.Filled.Timer, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("${viewModel.state.secondaryRestTimerSeconds}s rest", fontSize = 12.sp)
+                }
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -167,7 +180,10 @@ fun WorkoutScreen(
                     unit = viewModel.state.unit,
                     onCompleteSet = {
                         viewModel.completeSecondarySet(week, lift, exercise.id)
-                        viewModel.startRestTimer()
+                        viewModel.startRestTimer(viewModel.state.secondaryRestTimerSeconds)
+                    },
+                    onEdit = {
+                        editingExercise = exercise
                     },
                     onRemove = {
                         viewModel.removeSecondaryExercise(lift, exercise.id)
@@ -212,6 +228,31 @@ fun WorkoutScreen(
             onAdd = { name, numSets, reps, weight ->
                 viewModel.addSecondaryExercise(lift, name, numSets, reps, weight)
                 showAddExerciseDialog = false
+            }
+        )
+    }
+
+    // Edit secondary exercise dialog
+    editingExercise?.let { exercise ->
+        EditSecondaryExerciseDialog(
+            exercise = exercise,
+            unit = viewModel.state.unit,
+            onDismiss = { editingExercise = null },
+            onSave = { name, numSets, reps, weight ->
+                viewModel.updateSecondaryExercise(lift, exercise.id, name, numSets, reps, weight)
+                editingExercise = null
+            }
+        )
+    }
+
+    // Secondary rest timer settings dialog
+    if (showSecondaryTimerSettings) {
+        TimerSettingsDialog(
+            currentSeconds = viewModel.state.secondaryRestTimerSeconds,
+            onDismiss = { showSecondaryTimerSettings = false },
+            onSave = { seconds ->
+                viewModel.updateSecondaryRestTimer(seconds)
+                showSecondaryTimerSettings = false
             }
         )
     }
@@ -342,6 +383,7 @@ fun SecondaryExerciseCard(
     completedSets: Int,
     unit: String,
     onCompleteSet: () -> Unit,
+    onEdit: () -> Unit,
     onRemove: () -> Unit
 ) {
     var showRemoveConfirm by remember { mutableStateOf(false) }
@@ -393,6 +435,18 @@ fun SecondaryExerciseCard(
             }
 
             Spacer(modifier = Modifier.width(4.dp))
+
+            IconButton(
+                onClick = onEdit,
+                modifier = Modifier.size(28.dp)
+            ) {
+                Icon(
+                    Icons.Filled.Edit,
+                    contentDescription = "Edit",
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
             IconButton(
                 onClick = { showRemoveConfirm = true },
@@ -495,6 +549,85 @@ fun AddSecondaryExerciseDialog(
                 },
                 enabled = name.isNotBlank()
             ) { Text("Add") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+fun EditSecondaryExerciseDialog(
+    exercise: com.workout531.app.data.SecondaryExercise,
+    unit: String,
+    onDismiss: () -> Unit,
+    onSave: (name: String, sets: Int, reps: Int, weight: Double) -> Unit
+) {
+    var name by remember { mutableStateOf(exercise.name) }
+    var setsInput by remember { mutableStateOf(exercise.sets.toString()) }
+    var repsInput by remember { mutableStateOf(exercise.reps.toString()) }
+    var weightInput by remember {
+        mutableStateOf(if (exercise.weight < 0) "bw" else exercise.weight.toInt().toString())
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Secondary Exercise") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Exercise Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = setsInput,
+                        onValueChange = { if (it.isEmpty() || it.toIntOrNull() != null) setsInput = it },
+                        label = { Text("Sets") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = repsInput,
+                        onValueChange = { if (it.isEmpty() || it.toIntOrNull() != null) repsInput = it },
+                        label = { Text("Reps") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                OutlinedTextField(
+                    value = weightInput,
+                    onValueChange = {
+                        val lower = it.lowercase().trim()
+                        if (it.isEmpty() || lower == "b" || lower == "bw" || it.toDoubleOrNull() != null) {
+                            weightInput = it
+                        }
+                    },
+                    label = { Text("Weight ($unit) or \"bw\"") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (name.isNotBlank()) {
+                        val weight = if (weightInput.lowercase().trim() == "bw") -1.0
+                            else weightInput.toDoubleOrNull() ?: 0.0
+                        onSave(
+                            name.trim(),
+                            setsInput.toIntOrNull() ?: 3,
+                            repsInput.toIntOrNull() ?: 10,
+                            weight
+                        )
+                    }
+                },
+                enabled = name.isNotBlank()
+            ) { Text("Save") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }

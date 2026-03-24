@@ -31,9 +31,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         private set
     private var timerJob: Job? = null
 
-    fun startRestTimer() {
+    fun startRestTimer(seconds: Int = state.restTimerSeconds) {
         timerJob?.cancel()
-        restTimeRemaining = state.restTimerSeconds
+        restTimeRemaining = seconds
         restTimerActive = true
         timerJob = viewModelScope.launch {
             while (restTimeRemaining > 0) {
@@ -189,6 +189,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         save()
     }
 
+    fun updateSecondaryRestTimer(seconds: Int) {
+        state = state.copy(secondaryRestTimerSeconds = seconds)
+        save()
+    }
+
     fun resetApp() {
         state = AppState()
         save()
@@ -213,6 +218,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         current[lift.name] = exercises
         state = state.copy(secondaryExercises = current)
         save()
+    }
+
+    fun updateSecondaryExercise(lift: MainLift, exerciseId: String, name: String, sets: Int, reps: Int, weight: Double) {
+        val current = state.secondaryExercises.toMutableMap()
+        val exercises = (current[lift.name] ?: emptyList()).toMutableList()
+        val idx = exercises.indexOfFirst { it.id == exerciseId }
+        if (idx >= 0) {
+            exercises[idx] = exercises[idx].copy(name = name, sets = sets, reps = reps, weight = weight)
+            current[lift.name] = exercises
+            state = state.copy(secondaryExercises = current)
+            save()
+        }
     }
 
     fun removeSecondaryExercise(lift: MainLift, exerciseId: String) {

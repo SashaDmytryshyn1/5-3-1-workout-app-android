@@ -90,6 +90,7 @@ data class AppState(
     val unit: String = "lbs",
     val barWeight: Double = 45.0,
     val restTimerSeconds: Int = 90,
+    val secondaryRestTimerSeconds: Int = 60,
     // Key: MainLift.name -> list of secondary exercises (persists across cycles)
     val secondaryExercises: Map<String, List<SecondaryExercise>> = emptyMap(),
     // Key: "cycleNum_week_lift" -> list of secondary exercise completion states for current workout
