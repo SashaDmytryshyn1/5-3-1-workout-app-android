@@ -62,13 +62,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun save() = dataStore.saveState(state)
 
-    fun setupMaxes(ohp: Double, squat: Double, bench: Double, deadlift: Double) {
+    fun setupMaxes(ohp: Double, squat: Double, bench: Double, deadlift: Double, bodyWeight: Double? = null) {
         val oneRepMaxes = LiftMaxes(ohp, squat, bench, deadlift)
         val trainingMaxes = oneRepMaxes.trainingMaxes(state.tmPercent)
         state = state.copy(
             oneRepMaxes = oneRepMaxes,
             currentCycle = Cycle(number = state.currentCycleNumber, maxes = trainingMaxes),
-            isSetup = true
+            isSetup = true,
+            startingBodyWeight = bodyWeight ?: state.startingBodyWeight,
+            profileCreatedDate = state.profileCreatedDate ?: LocalDate.now().toString()
         )
         save()
     }
@@ -108,8 +110,22 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val updatedWorkouts = cycle.completedWorkouts.toMutableMap()
         updatedWorkouts[key] = updatedWorkout
 
+        // Add to persistent workout log if this is the first set completed for this workout today
+        val today = LocalDate.now().toString()
+        val logEntry = WorkoutLogEntry(
+            date = today,
+            lift = lift.name,
+            week = week.name,
+            cycleNumber = state.currentCycleNumber
+        )
+        val alreadyLogged = state.workoutLog.any {
+            it.date == today && it.lift == lift.name && it.week == week.name && it.cycleNumber == state.currentCycleNumber
+        }
+        val updatedLog = if (alreadyLogged) state.workoutLog else state.workoutLog + logEntry
+
         state = state.copy(
-            currentCycle = cycle.copy(completedWorkouts = updatedWorkouts)
+            currentCycle = cycle.copy(completedWorkouts = updatedWorkouts),
+            workoutLog = updatedLog
         )
         save()
     }

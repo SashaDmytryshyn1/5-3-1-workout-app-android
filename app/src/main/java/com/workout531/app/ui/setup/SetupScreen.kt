@@ -21,6 +21,7 @@ fun SetupScreen(viewModel: AppViewModel, onComplete: () -> Unit) {
     var squat by remember { mutableStateOf("") }
     var bench by remember { mutableStateOf("") }
     var deadlift by remember { mutableStateOf("") }
+    var bodyWeight by remember { mutableStateOf("") }
     var useTrainingMax by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -72,6 +73,10 @@ fun SetupScreen(viewModel: AppViewModel, onComplete: () -> Unit) {
             MaxInput("Bench Press (${viewModel.state.unit})", bench) { bench = it }
             MaxInput("Deadlift (${viewModel.state.unit})", deadlift) { deadlift = it }
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            MaxInput("Body Weight (${viewModel.state.unit}) - optional", bodyWeight) { bodyWeight = it }
+
             Spacer(modifier = Modifier.height(24.dp))
 
             val allFilled = listOf(ohp, squat, bench, deadlift).all {
@@ -84,15 +89,16 @@ fun SetupScreen(viewModel: AppViewModel, onComplete: () -> Unit) {
                     val s = squat.toDouble()
                     val b = bench.toDouble()
                     val d = deadlift.toDouble()
+                    val bw = bodyWeight.toDoubleOrNull()
                     if (useTrainingMax) {
                         viewModel.updateSettings(
                             viewModel.state.unit,
                             viewModel.state.barWeight,
                             1.0
                         )
-                        viewModel.setupMaxes(o, s, b, d)
+                        viewModel.setupMaxes(o, s, b, d, bw)
                     } else {
-                        viewModel.setupMaxes(o, s, b, d)
+                        viewModel.setupMaxes(o, s, b, d, bw)
                     }
                     onComplete()
                 },

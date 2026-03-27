@@ -60,6 +60,12 @@ fun SettingsScreen(
                     Text("Bar Weight: ${viewModel.state.barWeight.toInt()} ${viewModel.state.unit}")
                     Text("TM Percentage: ${(viewModel.state.tmPercent * 100).toInt()}%")
                     Text("Rounding: ${viewModel.state.roundTo} ${viewModel.state.unit}")
+                    viewModel.state.startingBodyWeight?.let { weight ->
+                        Text("Starting Body Weight: ${weight.toInt()} ${viewModel.state.unit}")
+                    }
+                    viewModel.state.profileCreatedDate?.let { date ->
+                        Text("Profile Created: $date")
+                    }
                 }
             }
 

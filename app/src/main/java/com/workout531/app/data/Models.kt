@@ -80,6 +80,13 @@ data class SecondaryExercise(
     val completedSets: Int = 0
 )
 
+data class WorkoutLogEntry(
+    val date: String,
+    val lift: String,
+    val week: String,
+    val cycleNumber: Int
+)
+
 data class AppState(
     val oneRepMaxes: LiftMaxes = LiftMaxes(),
     val tmPercent: Double = 0.90,
@@ -94,5 +101,11 @@ data class AppState(
     // Key: MainLift.name -> list of secondary exercises (persists across cycles)
     val secondaryExercises: Map<String, List<SecondaryExercise>> = emptyMap(),
     // Key: "cycleNum_week_lift" -> list of secondary exercise completion states for current workout
-    val secondaryExerciseProgress: Map<String, List<SecondaryExercise>> = emptyMap()
+    val secondaryExerciseProgress: Map<String, List<SecondaryExercise>> = emptyMap(),
+    // Starting body weight when profile was created
+    val startingBodyWeight: Double? = null,
+    // Date when the profile was first created
+    val profileCreatedDate: String? = null,
+    // Persistent log of all completed workout dates (survives cycle transitions)
+    val workoutLog: List<WorkoutLogEntry> = emptyList()
 )
