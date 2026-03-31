@@ -14,6 +14,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -132,7 +134,13 @@ fun CycleOverviewScreen(
 
                 for (lift in WorkoutCalculator.dayOrder) {
                     val isCompleted = viewModel.isWorkoutCompleted(week, lift)
-                    val allSetsCompleted = viewModel.areAllSetsCompleted(week, lift)
+                    val hitTarget = viewModel.didHitTargetReps(week, lift)
+
+                    // Green = completed and hit all target reps
+                    // Yellow = completed but missed target reps on the main set
+                    // Default = not started
+                    val completedAndHit = isCompleted && hitTarget == true
+                    val completedButMissed = isCompleted && hitTarget == false
 
                     Card(
                         modifier = Modifier
@@ -141,14 +149,16 @@ fun CycleOverviewScreen(
                             .clickable { onWorkoutClick(week, lift) },
                         colors = CardDefaults.cardColors(
                             containerColor = when {
-                                allSetsCompleted -> Color(0xFF1B5E20).copy(alpha = 0.35f)
-                                isCompleted -> Color(0xFFE65100).copy(alpha = 0.30f)
+                                completedAndHit -> Color(0xFF1B5E20).copy(alpha = 0.35f)
+                                completedButMissed -> Color(0xFFF9A825).copy(alpha = 0.25f)
+                                isCompleted -> Color(0xFF1B5E20).copy(alpha = 0.35f) // deload or no AMRAP
                                 else -> MaterialTheme.colorScheme.surface
                             }
                         ),
                         border = when {
-                            allSetsCompleted -> androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.5f))
-                            isCompleted -> androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF9800).copy(alpha = 0.5f))
+                            completedAndHit -> androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.5f))
+                            completedButMissed -> androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFEB3B).copy(alpha = 0.5f))
+                            isCompleted -> androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.5f))
                             else -> null
                         }
                     ) {
@@ -159,15 +169,12 @@ fun CycleOverviewScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                when {
-                                    allSetsCompleted -> Icons.Filled.CheckCircle
-                                    isCompleted -> Icons.Filled.CheckCircle
-                                    else -> Icons.Outlined.Circle
-                                },
+                                if (isCompleted) Icons.Filled.CheckCircle else Icons.Outlined.Circle,
                                 contentDescription = null,
                                 tint = when {
-                                    allSetsCompleted -> Color(0xFF4CAF50)
-                                    isCompleted -> Color(0xFFFF9800)
+                                    completedAndHit -> Color(0xFF4CAF50)
+                                    completedButMissed -> Color(0xFFFFEB3B)
+                                    isCompleted -> Color(0xFF4CAF50)
                                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                                 }
                             )
@@ -177,11 +184,11 @@ fun CycleOverviewScreen(
                                     lift.displayName,
                                     fontSize = 16.sp
                                 )
-                                if (isCompleted && !allSetsCompleted) {
+                                if (completedButMissed) {
                                     Text(
-                                        "Incomplete - some sets skipped",
+                                        "Missed target reps",
                                         fontSize = 12.sp,
-                                        color = Color(0xFFFF9800)
+                                        color = Color(0xFFFFEB3B)
                                     )
                                 }
                             }
@@ -214,22 +221,13 @@ fun CycleOverviewScreen(
     }
 
     if (showNextCycleDialog) {
-        AlertDialog(
-            onDismissRequest = { showNextCycleDialog = false },
-            title = { Text("Start Next Cycle?") },
-            text = {
-                val inc = if (viewModel.state.unit == "kg") "2.5/5" else "5/10"
-                Text("Training maxes will increase by $inc ${viewModel.state.unit} (upper/lower).")
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showNextCycleDialog = false
-                    viewModel.nextCycle()
-                    onNextCycle()
-                }) { Text("Yes, Progress") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showNextCycleDialog = false }) { Text("Cancel") }
+        NextCycleDialog(
+            viewModel = viewModel,
+            onDismiss = { showNextCycleDialog = false },
+            onConfirm = { liftsToProgress ->
+                showNextCycleDialog = false
+                viewModel.nextCycle(liftsToProgress)
+                onNextCycle()
             }
         )
     }
@@ -508,4 +506,102 @@ fun WorkoutCalendar(viewModel: AppViewModel) {
             }
         }
     }
+}
+
+@Composable
+fun NextCycleDialog(
+    viewModel: AppViewModel,
+    onDismiss: () -> Unit,
+    onConfirm: (Set<MainLift>) -> Unit
+) {
+    val unit = viewModel.state.unit
+    val upperInc = if (unit == "kg") "2.5" else "5"
+    val lowerInc = if (unit == "kg") "5" else "10"
+
+    // Pre-select lifts based on whether they hit target reps
+    val initialSelection = remember {
+        WorkoutCalculator.dayOrder.filter { lift ->
+            viewModel.didLiftHitAllTargets(lift) != false
+        }.toMutableStateList()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Start Next Cycle?") },
+        text = {
+            Column {
+                Text(
+                    "Select which lifts to increase. Lifts where you missed target reps are unchecked.",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                for (lift in WorkoutCalculator.dayOrder) {
+                    val isUpper = lift == MainLift.OHP || lift == MainLift.BENCH
+                    val inc = if (isUpper) upperInc else lowerInc
+                    val hitTargets = viewModel.didLiftHitAllTargets(lift)
+                    val isChecked = lift in initialSelection
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                if (isChecked) initialSelection.remove(lift)
+                                else initialSelection.add(lift)
+                            }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = isChecked,
+                            onCheckedChange = {
+                                if (it) initialSelection.add(lift)
+                                else initialSelection.remove(lift)
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                lift.displayName,
+                                fontSize = 15.sp
+                            )
+                            Text(
+                                if (isChecked) "+$inc $unit" else "No change",
+                                fontSize = 12.sp,
+                                color = if (isChecked) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        // Show indicator for whether they hit reps
+                        when (hitTargets) {
+                            true -> Icon(
+                                Icons.Filled.CheckCircle,
+                                contentDescription = "Hit all targets",
+                                tint = Color(0xFF4CAF50),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            false -> Text(
+                                "Missed",
+                                fontSize = 12.sp,
+                                color = Color(0xFFFFEB3B)
+                            )
+                            null -> Text(
+                                "N/A",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onConfirm(initialSelection.toSet())
+            }) { Text("Start Next Cycle") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }

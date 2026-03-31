@@ -163,16 +163,49 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return completed.sets.find { it.setNumber == setIndex + 1 }?.completedReps
     }
 
-    fun nextCycle() {
-        val newMaxes = WorkoutCalculator.progressMaxes(
-            state.currentCycle?.maxes ?: return,
-            state.unit
+    /**
+     * Returns true if the user hit target reps on the last (AMRAP) set.
+     * Returns null if the workout hasn't been completed yet.
+     */
+    fun didHitTargetReps(week: Week, lift: MainLift): Boolean? {
+        val cycle = state.currentCycle ?: return null
+        val key = cycle.key(week, lift)
+        val completed = cycle.completedWorkouts[key] ?: return null
+        val trainingMax = WorkoutCalculator.getTrainingMax(lift, cycle.maxes)
+        val allSets = WorkoutCalculator.generateWorkout(lift, week, trainingMax, state.roundTo)
+        val lastSetNumber = allSets.size
+        val lastCompletedSet = completed.sets.find { it.setNumber == lastSetNumber } ?: return null
+        return lastCompletedSet.completedReps >= lastCompletedSet.targetReps
+    }
+
+    /**
+     * Check if a lift hit target reps on the AMRAP set in any non-deload week.
+     * Returns true if ALL completed AMRAP sets for this lift hit target reps.
+     * Returns null if no AMRAP workouts were completed for this lift.
+     */
+    fun didLiftHitAllTargets(lift: MainLift): Boolean? {
+        val amrapWeeks = listOf(Week.WEEK1, Week.WEEK2, Week.WEEK3)
+        val results = amrapWeeks.mapNotNull { week -> didHitTargetReps(week, lift) }
+        if (results.isEmpty()) return null
+        return results.all { it }
+    }
+
+    fun nextCycle(liftsToProgress: Set<MainLift> = MainLift.entries.toSet()) {
+        val currentMaxes = state.currentCycle?.maxes ?: return
+        val upperInc = if (state.unit == "kg") 2.5 else 5.0
+        val lowerInc = if (state.unit == "kg") 5.0 else 10.0
+
+        val newMaxes = LiftMaxes(
+            ohp = if (MainLift.OHP in liftsToProgress) currentMaxes.ohp + upperInc else currentMaxes.ohp,
+            squat = if (MainLift.SQUAT in liftsToProgress) currentMaxes.squat + lowerInc else currentMaxes.squat,
+            bench = if (MainLift.BENCH in liftsToProgress) currentMaxes.bench + upperInc else currentMaxes.bench,
+            deadlift = if (MainLift.DEADLIFT in liftsToProgress) currentMaxes.deadlift + lowerInc else currentMaxes.deadlift
         )
+
         val newCycleNumber = state.currentCycleNumber + 1
         state = state.copy(
             currentCycleNumber = newCycleNumber,
             currentCycle = Cycle(number = newCycleNumber, maxes = newMaxes),
-            // Clear secondary exercise progress for the new cycle but keep templates
             secondaryExerciseProgress = emptyMap()
         )
         save()
