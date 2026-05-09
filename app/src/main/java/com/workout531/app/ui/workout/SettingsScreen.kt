@@ -4,7 +4,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,6 +32,8 @@ fun SettingsScreen(
     var calcResult by remember { mutableStateOf<Double?>(null) }
     var editingLift by remember { mutableStateOf<MainLift?>(null) }
     var editTMInput by remember { mutableStateOf("") }
+    var showNotepad by remember { mutableStateOf(false) }
+    var newNoteInput by remember { mutableStateOf("") }
 
     Scaffold(
         topBar = {
@@ -120,6 +124,83 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("1RM Calculator")
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Improvement Notepad
+            OutlinedButton(
+                onClick = { showNotepad = !showNotepad },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                val count = viewModel.state.improvementNotes.size
+                Text(if (count > 0) "Improvement Notepad ($count)" else "Improvement Notepad")
+            }
+
+            if (showNotepad) {
+                Card(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Ideas & Improvements", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        viewModel.state.improvementNotes.forEachIndexed { index, note ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    note,
+                                    modifier = Modifier.weight(1f),
+                                    fontSize = 14.sp
+                                )
+                                IconButton(
+                                    onClick = { viewModel.removeImprovementNote(index) },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Close,
+                                        contentDescription = "Remove note",
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        if (viewModel.state.improvementNotes.isEmpty()) {
+                            Text(
+                                "No notes yet. Add ideas for app improvements!",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 13.sp
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = newNoteInput,
+                                onValueChange = { newNoteInput = it },
+                                label = { Text("New idea...") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            IconButton(
+                                onClick = {
+                                    if (newNoteInput.isNotBlank()) {
+                                        viewModel.addImprovementNote(newNoteInput.trim())
+                                        newNoteInput = ""
+                                    }
+                                }
+                            ) {
+                                Icon(Icons.Filled.Add, contentDescription = "Add note")
+                            }
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(32.dp))

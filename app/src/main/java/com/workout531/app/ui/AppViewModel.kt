@@ -191,9 +191,33 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun nextCycle(liftsToProgress: Set<MainLift> = MainLift.entries.toSet()) {
-        val currentMaxes = state.currentCycle?.maxes ?: return
+        val cycle = state.currentCycle ?: return
+        val currentMaxes = cycle.maxes
         val upperInc = if (state.unit == "kg") 2.5 else 5.0
         val lowerInc = if (state.unit == "kg") 5.0 else 10.0
+
+        val updatedLog = state.workoutLog.toMutableList()
+        for ((key, workout) in cycle.completedWorkouts) {
+            val parts = key.split("_")
+            if (parts.size == 2) {
+                val weekName = parts[0]
+                val liftName = parts[1]
+                val alreadyLogged = updatedLog.any {
+                    it.date == workout.completedDate &&
+                    it.lift == liftName &&
+                    it.week == weekName &&
+                    it.cycleNumber == state.currentCycleNumber
+                }
+                if (!alreadyLogged) {
+                    updatedLog.add(WorkoutLogEntry(
+                        date = workout.completedDate,
+                        lift = liftName,
+                        week = weekName,
+                        cycleNumber = state.currentCycleNumber
+                    ))
+                }
+            }
+        }
 
         val newMaxes = LiftMaxes(
             ohp = if (MainLift.OHP in liftsToProgress) currentMaxes.ohp + upperInc else currentMaxes.ohp,
@@ -206,7 +230,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         state = state.copy(
             currentCycleNumber = newCycleNumber,
             currentCycle = Cycle(number = newCycleNumber, maxes = newMaxes),
-            secondaryExerciseProgress = emptyMap()
+            secondaryExerciseProgress = emptyMap(),
+            workoutLog = updatedLog
         )
         save()
     }
@@ -254,7 +279,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return state.secondaryExercises[lift.name] ?: emptyList()
     }
 
-    fun addSecondaryExercise(lift: MainLift, name: String, sets: Int, reps: Int, weight: Double) {
+    fun addSecondaryExercise(lift: MainLift, name: String, sets: Int, reps: Int, weight: Double, restTimer: Int? = null) {
         val current = state.secondaryExercises.toMutableMap()
         val exercises = (current[lift.name] ?: emptyList()).toMutableList()
         exercises.add(SecondaryExercise(
@@ -262,20 +287,36 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             name = name,
             sets = sets,
             reps = reps,
-            weight = weight
+            weight = weight,
+            restTimerSeconds = restTimer
         ))
         current[lift.name] = exercises
         state = state.copy(secondaryExercises = current)
         save()
     }
 
-    fun updateSecondaryExercise(lift: MainLift, exerciseId: String, name: String, sets: Int, reps: Int, weight: Double) {
+    fun updateSecondaryExercise(lift: MainLift, exerciseId: String, name: String, sets: Int, reps: Int, weight: Double, restTimer: Int? = null, updateGlobally: Boolean = false) {
         val current = state.secondaryExercises.toMutableMap()
         val exercises = (current[lift.name] ?: emptyList()).toMutableList()
         val idx = exercises.indexOfFirst { it.id == exerciseId }
         if (idx >= 0) {
-            exercises[idx] = exercises[idx].copy(name = name, sets = sets, reps = reps, weight = weight)
+            val oldName = exercises[idx].name
+            exercises[idx] = exercises[idx].copy(name = name, sets = sets, reps = reps, weight = weight, restTimerSeconds = restTimer)
             current[lift.name] = exercises
+
+            if (updateGlobally) {
+                for (liftKey in current.keys) {
+                    if (liftKey == lift.name) continue
+                    val otherExercises = (current[liftKey] ?: emptyList()).toMutableList()
+                    otherExercises.forEachIndexed { i, ex ->
+                        if (ex.name.equals(oldName, ignoreCase = true)) {
+                            otherExercises[i] = ex.copy(weight = weight, restTimerSeconds = restTimer)
+                        }
+                    }
+                    current[liftKey] = otherExercises
+                }
+            }
+
             state = state.copy(secondaryExercises = current)
             save()
         }
@@ -320,5 +361,38 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun getSecondaryCompletedSets(week: Week, lift: MainLift, exerciseId: String): Int {
         val progress = getSecondaryProgress(week, lift)
         return progress.find { it.id == exerciseId }?.completedSets ?: 0
+    }
+
+    fun hasSecondaryProgress(week: Week, lift: MainLift): Boolean {
+        val progress = getSecondaryProgress(week, lift)
+        return progress.any { it.completedSets > 0 }
+    }
+
+    fun getRestTimerForExercise(exerciseId: String, lift: MainLift): Int {
+        val exercises = getSecondaryExercises(lift)
+        return exercises.find { it.id == exerciseId }?.restTimerSeconds
+            ?: state.secondaryRestTimerSeconds
+    }
+
+    fun hasMatchingExerciseOnOtherLifts(lift: MainLift, name: String): Boolean {
+        return state.secondaryExercises.any { (key, exercises) ->
+            key != lift.name && exercises.any { it.name.equals(name, ignoreCase = true) }
+        }
+    }
+
+    // --- Improvement Notes ---
+
+    fun addImprovementNote(note: String) {
+        state = state.copy(improvementNotes = state.improvementNotes + note)
+        save()
+    }
+
+    fun removeImprovementNote(index: Int) {
+        val notes = state.improvementNotes.toMutableList()
+        if (index in notes.indices) {
+            notes.removeAt(index)
+            state = state.copy(improvementNotes = notes)
+            save()
+        }
     }
 }

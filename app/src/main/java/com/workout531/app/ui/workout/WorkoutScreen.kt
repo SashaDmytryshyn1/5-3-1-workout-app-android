@@ -173,14 +173,16 @@ fun WorkoutScreen(
 
             secondaryExercises.forEach { exercise ->
                 val completedSets = viewModel.getSecondaryCompletedSets(week, lift, exercise.id)
+                val exerciseRestTime = viewModel.getRestTimerForExercise(exercise.id, lift)
 
                 SecondaryExerciseCard(
                     exercise = exercise,
                     completedSets = completedSets,
                     unit = viewModel.state.unit,
+                    restTimerSeconds = exerciseRestTime,
                     onCompleteSet = {
                         viewModel.completeSecondarySet(week, lift, exercise.id)
-                        viewModel.startRestTimer(viewModel.state.secondaryRestTimerSeconds)
+                        viewModel.startRestTimer(exerciseRestTime)
                     },
                     onEdit = {
                         editingExercise = exercise
@@ -224,9 +226,10 @@ fun WorkoutScreen(
     if (showAddExerciseDialog) {
         AddSecondaryExerciseDialog(
             unit = viewModel.state.unit,
+            defaultRestSeconds = viewModel.state.secondaryRestTimerSeconds,
             onDismiss = { showAddExerciseDialog = false },
-            onAdd = { name, numSets, reps, weight ->
-                viewModel.addSecondaryExercise(lift, name, numSets, reps, weight)
+            onAdd = { name, numSets, reps, weight, restTimer ->
+                viewModel.addSecondaryExercise(lift, name, numSets, reps, weight, restTimer)
                 showAddExerciseDialog = false
             }
         )
@@ -234,12 +237,15 @@ fun WorkoutScreen(
 
     // Edit secondary exercise dialog
     editingExercise?.let { exercise ->
+        val hasGlobalMatch = viewModel.hasMatchingExerciseOnOtherLifts(lift, exercise.name)
         EditSecondaryExerciseDialog(
             exercise = exercise,
             unit = viewModel.state.unit,
+            defaultRestSeconds = viewModel.state.secondaryRestTimerSeconds,
+            showGlobalUpdate = hasGlobalMatch,
             onDismiss = { editingExercise = null },
-            onSave = { name, numSets, reps, weight ->
-                viewModel.updateSecondaryExercise(lift, exercise.id, name, numSets, reps, weight)
+            onSave = { name, numSets, reps, weight, restTimer, updateGlobally ->
+                viewModel.updateSecondaryExercise(lift, exercise.id, name, numSets, reps, weight, restTimer, updateGlobally)
                 editingExercise = null
             }
         )
@@ -382,6 +388,7 @@ fun SecondaryExerciseCard(
     exercise: com.workout531.app.data.SecondaryExercise,
     completedSets: Int,
     unit: String,
+    restTimerSeconds: Int,
     onCompleteSet: () -> Unit,
     onEdit: () -> Unit,
     onRemove: () -> Unit
@@ -414,11 +421,27 @@ fun SecondaryExerciseCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 14.sp
                 )
-                Text(
-                    "Sets done: $completedSets / ${exercise.sets}",
-                    fontSize = 12.sp,
-                    color = if (allDone) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Sets done: $completedSets / ${exercise.sets}",
+                        fontSize = 12.sp,
+                        color = if (allDone) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (exercise.restTimerSeconds != null) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            Icons.Filled.Timer,
+                            contentDescription = "Rest: ${restTimerSeconds}s",
+                            modifier = Modifier.size(12.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                        Text(
+                            "${restTimerSeconds}s",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                }
             }
 
             if (!allDone) {
@@ -483,13 +506,16 @@ fun SecondaryExerciseCard(
 @Composable
 fun AddSecondaryExerciseDialog(
     unit: String,
+    defaultRestSeconds: Int,
     onDismiss: () -> Unit,
-    onAdd: (name: String, sets: Int, reps: Int, weight: Double) -> Unit
+    onAdd: (name: String, sets: Int, reps: Int, weight: Double, restTimer: Int?) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var setsInput by remember { mutableStateOf("3") }
     var repsInput by remember { mutableStateOf("10") }
     var weightInput by remember { mutableStateOf("") }
+    var useCustomTimer by remember { mutableStateOf(false) }
+    var restTimerInput by remember { mutableStateOf(defaultRestSeconds.toString()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -531,6 +557,22 @@ fun AddSecondaryExerciseDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = useCustomTimer,
+                        onCheckedChange = { useCustomTimer = it }
+                    )
+                    Text("Custom rest timer", fontSize = 14.sp)
+                }
+                if (useCustomTimer) {
+                    OutlinedTextField(
+                        value = restTimerInput,
+                        onValueChange = { if (it.isEmpty() || it.toIntOrNull() != null) restTimerInput = it },
+                        label = { Text("Rest (seconds)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         },
         confirmButton = {
@@ -539,11 +581,13 @@ fun AddSecondaryExerciseDialog(
                     if (name.isNotBlank()) {
                         val weight = if (weightInput.lowercase().trim() == "bw") -1.0
                             else weightInput.toDoubleOrNull() ?: 0.0
+                        val restTimer = if (useCustomTimer) restTimerInput.toIntOrNull()?.coerceIn(10, 600) else null
                         onAdd(
                             name.trim(),
                             setsInput.toIntOrNull() ?: 3,
                             repsInput.toIntOrNull() ?: 10,
-                            weight
+                            weight,
+                            restTimer
                         )
                     }
                 },
@@ -560,8 +604,10 @@ fun AddSecondaryExerciseDialog(
 fun EditSecondaryExerciseDialog(
     exercise: com.workout531.app.data.SecondaryExercise,
     unit: String,
+    defaultRestSeconds: Int,
+    showGlobalUpdate: Boolean,
     onDismiss: () -> Unit,
-    onSave: (name: String, sets: Int, reps: Int, weight: Double) -> Unit
+    onSave: (name: String, sets: Int, reps: Int, weight: Double, restTimer: Int?, updateGlobally: Boolean) -> Unit
 ) {
     var name by remember { mutableStateOf(exercise.name) }
     var setsInput by remember { mutableStateOf(exercise.sets.toString()) }
@@ -569,6 +615,11 @@ fun EditSecondaryExerciseDialog(
     var weightInput by remember {
         mutableStateOf(if (exercise.weight < 0) "bw" else exercise.weight.toInt().toString())
     }
+    var useCustomTimer by remember { mutableStateOf(exercise.restTimerSeconds != null) }
+    var restTimerInput by remember {
+        mutableStateOf((exercise.restTimerSeconds ?: defaultRestSeconds).toString())
+    }
+    var updateGlobally by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -610,6 +661,31 @@ fun EditSecondaryExerciseDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = useCustomTimer,
+                        onCheckedChange = { useCustomTimer = it }
+                    )
+                    Text("Custom rest timer", fontSize = 14.sp)
+                }
+                if (useCustomTimer) {
+                    OutlinedTextField(
+                        value = restTimerInput,
+                        onValueChange = { if (it.isEmpty() || it.toIntOrNull() != null) restTimerInput = it },
+                        label = { Text("Rest (seconds)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                if (showGlobalUpdate) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = updateGlobally,
+                            onCheckedChange = { updateGlobally = it }
+                        )
+                        Text("Update weight on all lifts", fontSize = 14.sp)
+                    }
+                }
             }
         },
         confirmButton = {
@@ -618,11 +694,14 @@ fun EditSecondaryExerciseDialog(
                     if (name.isNotBlank()) {
                         val weight = if (weightInput.lowercase().trim() == "bw") -1.0
                             else weightInput.toDoubleOrNull() ?: 0.0
+                        val restTimer = if (useCustomTimer) restTimerInput.toIntOrNull()?.coerceIn(10, 600) else null
                         onSave(
                             name.trim(),
                             setsInput.toIntOrNull() ?: 3,
                             repsInput.toIntOrNull() ?: 10,
-                            weight
+                            weight,
+                            restTimer,
+                            updateGlobally
                         )
                     }
                 },

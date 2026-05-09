@@ -77,7 +77,8 @@ data class SecondaryExercise(
     val sets: Int = 3,
     val reps: Int = 10,
     val weight: Double = 0.0,
-    val completedSets: Int = 0
+    val completedSets: Int = 0,
+    val restTimerSeconds: Int? = null
 )
 
 data class WorkoutLogEntry(
@@ -107,5 +108,7 @@ data class AppState(
     // Date when the profile was first created
     val profileCreatedDate: String? = null,
     // Persistent log of all completed workout dates (survives cycle transitions)
-    val workoutLog: List<WorkoutLogEntry> = emptyList()
+    val workoutLog: List<WorkoutLogEntry> = emptyList(),
+    // User improvement notes
+    val improvementNotes: List<String> = emptyList()
 )

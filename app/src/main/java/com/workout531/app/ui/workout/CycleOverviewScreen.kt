@@ -135,12 +135,11 @@ fun CycleOverviewScreen(
                 for (lift in WorkoutCalculator.dayOrder) {
                     val isCompleted = viewModel.isWorkoutCompleted(week, lift)
                     val hitTarget = viewModel.didHitTargetReps(week, lift)
+                    val hasSecondary = viewModel.hasSecondaryProgress(week, lift)
 
-                    // Green = completed and hit all target reps
-                    // Yellow = completed but missed target reps on the main set
-                    // Default = not started
                     val completedAndHit = isCompleted && hitTarget == true
                     val completedButMissed = isCompleted && hitTarget == false
+                    val secondaryOnly = !isCompleted && hasSecondary
 
                     Card(
                         modifier = Modifier
@@ -151,7 +150,8 @@ fun CycleOverviewScreen(
                             containerColor = when {
                                 completedAndHit -> Color(0xFF1B5E20).copy(alpha = 0.35f)
                                 completedButMissed -> Color(0xFFF9A825).copy(alpha = 0.25f)
-                                isCompleted -> Color(0xFF1B5E20).copy(alpha = 0.35f) // deload or no AMRAP
+                                isCompleted -> Color(0xFF1B5E20).copy(alpha = 0.35f)
+                                secondaryOnly -> Color(0xFFFF9800).copy(alpha = 0.2f)
                                 else -> MaterialTheme.colorScheme.surface
                             }
                         ),
@@ -159,6 +159,7 @@ fun CycleOverviewScreen(
                             completedAndHit -> androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.5f))
                             completedButMissed -> androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFEB3B).copy(alpha = 0.5f))
                             isCompleted -> androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.5f))
+                            secondaryOnly -> androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF9800).copy(alpha = 0.4f))
                             else -> null
                         }
                     ) {
@@ -175,6 +176,7 @@ fun CycleOverviewScreen(
                                     completedAndHit -> Color(0xFF4CAF50)
                                     completedButMissed -> Color(0xFFFFEB3B)
                                     isCompleted -> Color(0xFF4CAF50)
+                                    secondaryOnly -> Color(0xFFFF9800)
                                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                                 }
                             )
@@ -189,6 +191,13 @@ fun CycleOverviewScreen(
                                         "Missed target reps",
                                         fontSize = 12.sp,
                                         color = Color(0xFFFFEB3B)
+                                    )
+                                }
+                                if (secondaryOnly) {
+                                    Text(
+                                        "Secondary only",
+                                        fontSize = 12.sp,
+                                        color = Color(0xFFFF9800)
                                     )
                                 }
                             }
@@ -245,8 +254,9 @@ fun WorkoutSummaryCard(viewModel: AppViewModel) {
         for (lift in WorkoutCalculator.dayOrder) {
             val allDone = viewModel.areAllSetsCompleted(week, lift)
             val mainDone = viewModel.isWorkoutCompleted(week, lift)
+            val hasSecondary = viewModel.hasSecondaryProgress(week, lift)
             if (allDone) completedCount++
-            else if (mainDone) partialCount++
+            else if (mainDone || hasSecondary) partialCount++
         }
     }
     val missedCount = totalWorkoutsInCycle - completedCount - partialCount
