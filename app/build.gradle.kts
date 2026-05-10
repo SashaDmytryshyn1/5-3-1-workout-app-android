@@ -7,6 +7,15 @@ android {
     namespace = "com.workout531.app"
     compileSdk = 34
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("../release-keystore.jks")
+            storePassword = "workout531release"
+            keyAlias = "workout531"
+            keyPassword = "workout531release"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.workout531.app"
         minSdk = 26
@@ -18,10 +27,14 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        debug {
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
